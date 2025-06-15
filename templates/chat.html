@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Chat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.3.2/jsencrypt.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -589,29 +590,19 @@
             
             if (!message) return;
 
-            let messageData = message;
             let targetUserId = null;
-            let originalMessage = message;
 
             // Handle private messages
             if (privateTarget) {
                 targetUserId = privateTarget.id;
-                // Encrypt message for private recipient
-                if (privateTarget.public_key) {
-                    const encryptedMessage = encryptMessage(message, privateTarget.public_key);
-                    if (encryptedMessage) {
-                        messageData = encryptedMessage;
-                    } else {
-                        showNotification('Failed to encrypt message', 'error');
-                        return;
-                    }
-                }
             }
 
+            // TIDAK ADA LAGI ENKRIPSI DI SISI CLIENT
+            // Client hanya mengirim pesan asli (plaintext)
             socket.emit('send_message', {
-                message: messageData,
+                message: message, // Ini tidak lagi digunakan di backend untuk enkripsi
                 target_user_id: targetUserId,
-                original_message: originalMessage
+                original_message: message // Backend akan menggunakan ini sebagai sumber pesan
             });
 
             messageInput.value = '';
@@ -849,16 +840,26 @@
 
         function decryptMessage(encryptedMessage, privateKeyPem) {
             try {
-                // This is a simplified version - in a real app, use proper RSA decryption
-                // For demo purposes, we'll just decode if it matches our pattern
-                const decoded = atob(encryptedMessage);
-                if (decoded.includes('::encrypted::')) {
-                    return decoded.split('::encrypted::')[0];
+                // 1. Buat instance JSEncrypt
+                const decrypt = new JSEncrypt();
+
+                // 2. Set kunci privat yang didapat saat login
+                decrypt.setPrivateKey(privateKeyPem);
+
+                // 3. Lakukan dekripsi
+                // Pesan dari Python di-encode dengan Base64, jadi kita perlu men-decode nya terlebih dahulu
+                // JSEncrypt secara otomatis menangani Base64, jadi kita bisa langsung memasukkannya.
+                const decrypted = decrypt.decrypt(encryptedMessage);
+
+                if (decrypted) {
+                    return decrypted;
+                } else {
+                    // Gagal dekripsi (misalnya, kunci salah atau data rusak)
+                    return "[Pesan pribadi tidak dapat didekripsi]";
                 }
-                return encryptedMessage;
             } catch (error) {
                 console.error('Decryption error:', error);
-                return encryptedMessage;
+                return "[Error saat mendekripsi pesan]";
             }
         }
     </script>

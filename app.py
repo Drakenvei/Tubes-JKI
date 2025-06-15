@@ -468,56 +468,75 @@ def on_send_message(data):
     user_id = user_data['user_id']
     username = user_data['username']
     room = user_data['room']
-    message_data = data['message']
-    target_user_id = data.get('target_user_id')
-    original_message = data.get('original_message', message_data)
-    
+    original_message = data.get('original_message') # Kita akan selalu menggunakan original_message dari client
+    target_session_id = data.get('target_user_id') # Ini adalah session_id dari target
+
     timestamp = datetime.now().strftime('%H:%M:%S')
-    
-    # Save message to database
-    target_db_id = None
-    if target_user_id:
-        # Find target user's database ID
-        for sid, user_info in online_users.items():
-            if sid == target_user_id:
-                target_db_id = user_info['user_id']
-                break
-    
-    save_message_to_db(user_id, room, original_message, bool(target_user_id), target_db_id)
-    
-    # Send messages
-    if target_user_id:
-        # Private message
+
+    # Jika ini adalah pesan pribadi (private message)
+    if target_session_id:
+        # 1. Pastikan target online
+        if target_session_id not in online_users:
+            emit('error', {'message': 'User is offline or does not exist.'}, room=session_id)
+            return
+            
+        target_info = online_users[target_session_id]
+        target_db_id = target_info['user_id']
+        
+        # Simpan pesan plaintext ke database
+        save_message_to_db(user_id, room, original_message, is_private=True, target_user_id=target_db_id)
+
+        # 2. Ambil kunci publik target dari database
+        conn = get_db_connection()
+        target_user_db = conn.execute('SELECT public_key FROM users WHERE id = ?', (target_db_id,)).fetchone()
+        conn.close()
+
+        if not target_user_db or not target_user_db['public_key']:
+            emit('error', {'message': 'Target user does not have a public key.'}, room=session_id)
+            return
+
+        # 3. Enkripsi pesan menggunakan kunci publik target
+        encrypted_message = encrypt_message(original_message, target_user_db['public_key'])
+        
+        if not encrypted_message:
+            emit('error', {'message': 'Failed to encrypt message.'}, room=session_id)
+            return
+
+        # 4. Kirim pesan plaintext kembali ke PENGIRIM
+        emit('receive_message', {
+            'sender_id': session_id,
+            'sender': username,
+            'message': original_message, # Kirim plaintext ke diri sendiri
+            'timestamp': timestamp,
+            'target_user_id': target_session_id,
+            'is_private': True,
+            'is_sender': True
+        }, room=session_id)
+        
+        # 5. Kirim pesan terenkripsi ke PENERIMA
+        emit('receive_message', {
+            'sender_id': session_id,
+            'sender': username,
+            'message': encrypted_message, # Kirim hasil enkripsi ke target
+            'timestamp': timestamp,
+            'target_user_id': target_session_id,
+            'is_private': True,
+            'is_sender': False
+        }, room=target_session_id)
+
+    else:
+        # Pesan publik (tidak ada enkripsi)
+        save_message_to_db(user_id, room, original_message, is_private=False, target_user_id=None)
+        
         emit('receive_message', {
             'sender_id': session_id,
             'sender': username,
             'message': original_message,
             'timestamp': timestamp,
-            'target_user_id': target_user_id,
-            'is_private': True,
-            'is_sender': True
-        }, room=session_id)
-        
-        emit('receive_message', {
-            'sender_id': session_id,
-            'sender': username,
-            'message': message_data,
-            'timestamp': timestamp,
-            'target_user_id': target_user_id,
-            'is_private': True,
-            'is_sender': False
-        }, room=target_user_id)
-    else:
-        # Public message
-        emit('receive_message', {
-            'sender_id': session_id,
-            'sender': username,
-            'message': message_data,
-            'timestamp': timestamp,
             'target_user_id': None,
             'is_private': False
         }, room=room)
-
+        
 @socketio.on('typing')
 def on_typing(data):
     session_id = request.sid
