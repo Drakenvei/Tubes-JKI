@@ -502,7 +502,9 @@
             // Socket event listeners
             socket.on('connect', function() {
                 console.log('Connected to server');
-                joinRoom();
+                // Directly emit join_chat for the initial connection to bypass the check in joinRoom()
+                const roomName = document.getElementById('roomInput').value.trim() || 'general';
+                socket.emit('join_chat', { room: roomName });
             });
 
             socket.on('disconnect', function() {
