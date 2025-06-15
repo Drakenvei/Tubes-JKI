@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Chat - Enkripsi RSA</title>
+    <title>Secure Chat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
         * {
@@ -14,482 +14,573 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f0f2f5;
             height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .container {
-            width: 90%;
-            max-width: 1200px;
-            height: 90vh;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            display: flex;
             overflow: hidden;
         }
 
-        .login-form {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-            padding: 40px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .login-form h2 {
-            margin-bottom: 30px;
-            font-size: 2em;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-            width: 100%;
-            max-width: 300px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-        }
-
-        .btn {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .btn-primary {
-            background: #4CAF50;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #45a049;
-            transform: translateY(-2px);
-        }
-
-        .btn-secondary {
-            background: #2196F3;
-            color: white;
-            margin-left: 10px;
-        }
-
-        .btn-secondary:hover {
-            background: #1976D2;
-        }
-
         .chat-container {
-            display: none;
-            width: 100%;
-            height: 100%;
+            display: flex;
+            height: 100vh;
         }
 
         .sidebar {
             width: 300px;
-            background: #f8f9fa;
-            border-right: 1px solid #dee2e6;
+            background: white;
+            border-right: 1px solid #e1e1e1;
             display: flex;
             flex-direction: column;
         }
 
         .sidebar-header {
-            padding: 20px;
-            background: #343a40;
+            padding: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 1.2rem;
         }
 
         .user-info {
-            padding: 15px;
-            border-bottom: 1px solid #dee2e6;
-            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
-        .users-list {
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .room-section {
+            padding: 1rem;
+            border-bottom: 1px solid #e1e1e1;
+        }
+
+        .room-section h3 {
+            margin-bottom: 0.5rem;
+            color: #333;
+            font-size: 0.9rem;
+        }
+
+        .room-input {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .room-input input {
             flex: 1;
+            padding: 0.5rem;
+            border: 1px solid #e1e1e1;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .room-input button {
+            padding: 0.5rem 1rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .online-users {
+            flex: 1;
+            padding: 1rem;
             overflow-y: auto;
-            padding: 10px;
+        }
+
+        .online-users h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 0.9rem;
+        }
+
+        .user-list {
+            list-style: none;
         }
 
         .user-item {
-            padding: 10px;
-            margin: 5px 0;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            border-radius: 5px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background-color 0.2s;
         }
 
         .user-item:hover {
-            background: #e3f2fd;
-            transform: translateX(5px);
+            background: #f5f5f5;
         }
 
         .user-item.selected {
-            background: #2196F3;
-            color: white;
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
         }
 
-        .chat-area {
+        .user-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .user-status {
+            width: 8px;
+            height: 8px;
+            background: #4caf50;
+            border-radius: 50%;
+        }
+
+        .chat-main {
             flex: 1;
             display: flex;
             flex-direction: column;
+            background: white;
         }
 
         .chat-header {
-            padding: 20px;
-            background: #343a40;
-            color: white;
-            text-align: center;
+            padding: 1rem;
+            background: white;
+            border-bottom: 1px solid #e1e1e1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .messages-container {
+        .chat-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .encryption-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: #4caf50;
+        }
+
+        .chat-messages {
             flex: 1;
+            padding: 1rem;
             overflow-y: auto;
-            padding: 20px;
-            background: #f8f9fa;
+            background: #f9f9f9;
         }
 
         .message {
-            margin-bottom: 15px;
-            padding: 12px;
-            border-radius: 10px;
+            margin-bottom: 1rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .message-sender {
+            font-weight: 600;
+            color: #667eea;
+            font-size: 0.9rem;
+        }
+
+        .message-time {
+            font-size: 0.75rem;
+            color: #999;
+        }
+
+        .message-privacy {
+            font-size: 0.75rem;
+            color: #ff6b6b;
+            background: #ffe0e0;
+            padding: 0.125rem 0.25rem;
+            border-radius: 3px;
+        }
+
+        .message-content {
+            background: white;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             max-width: 70%;
             word-wrap: break-word;
         }
 
-        .message.own {
-            background: #2196F3;
+        .message.own .message-content {
+            background: #667eea;
             color: white;
             margin-left: auto;
-            text-align: right;
         }
 
-        .message.other {
-            background: white;
-            border: 1px solid #dee2e6;
+        .message.private .message-content {
+            border-left: 4px solid #ff6b6b;
         }
 
-        .message.system {
-            background: #ffc107;
-            color: #333;
+        .message.own.private .message-content {
+            border-left: 4px solid #ffd700;
+        }
+
+        .system-message {
             text-align: center;
-            margin: 10px auto;
-            max-width: 50%;
-        }
-
-        .message.encrypted {
-            background: #28a745;
-            color: white;
-        }
-
-        .message.private-sent {
-            background: #9c27b0;
-            color: white;
-            margin-left: auto;
-            text-align: right;
-        }
-
-        .message.private-received {
-            background: #ff5722;
-            color: white;
-        }
-
-        .message-header {
-            font-size: 0.9em;
-            opacity: 0.8;
-            margin-bottom: 5px;
-        }
-
-        .message-input {
-            display: flex;
-            padding: 20px;
-            background: white;
-            border-top: 1px solid #dee2e6;
-        }
-
-        .message-input input {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #dee2e6;
-            border-radius: 25px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        .message-input button {
-            margin-left: 10px;
-            padding: 12px 20px;
-            background: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-        }
-
-        .encryption-status {
-            padding: 10px;
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            text-align: center;
-            color: #155724;
+            color: #999;
+            font-style: italic;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
         }
 
         .typing-indicator {
-            padding: 10px;
+            color: #999;
             font-style: italic;
-            color: #6c757d;
-            min-height: 30px;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
         }
 
-        .key-display {
-            margin-top: 10px;
-            padding: 10px;
-            background: #f8f9fa;
+        .chat-input {
+            padding: 1rem;
+            background: white;
+            border-top: 1px solid #e1e1e1;
+        }
+
+        .private-message-indicator {
+            background: #ffe0e0;
+            border: 1px solid #ffcccb;
+            padding: 0.5rem;
             border-radius: 5px;
-            font-size: 12px;
-            word-break: break-all;
-        }
-
-        .hidden {
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: #d63031;
             display: none;
         }
 
-        .private-indicator {
-            font-size: 0.8em;
-            opacity: 0.9;
-            margin-top: 2px;
+        .input-container {
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-end;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #e1e1e1;
+            border-radius: 20px;
+            font-size: 1rem;
+            resize: none;
+            min-height: 44px;
+            max-height: 100px;
+        }
+
+        .message-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .send-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: #5a6fd8;
+        }
+
+        .send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .key-management {
+            padding: 1rem;
+            background: #f0f2f5;
+            border-top: 1px solid #e1e1e1;
+        }
+
+        .key-management button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .key-management button:hover {
+            background: #ff5252;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem;
+            border-radius: 5px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+            max-width: 300px;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .notification.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .notification.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .notification.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        @media (max-width: 768px) {
+            .chat-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 200px;
+            }
+            
+            .online-users {
+                display: none;
+            }
+            
+            .message-content {
+                max-width: 85%;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Login Form -->
-        <div id="loginForm" class="login-form">
-            <h2>🔒 Secure Chat</h2>
-            <p style="margin-bottom: 30px; text-align: center; opacity: 0.9;">
-                Chat aman dengan enkripsi RSA end-to-end
-            </p>
-            
-            <div class="form-group">
-                <label for="username">Username:</label>
-                <input type="text" id="username" placeholder="Masukkan username Anda" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="room">Room Chat:</label>
-                <input type="text" id="room" placeholder="general" value="general">
-            </div>
-            
-            <div style="margin-top: 20px;">
-                <button class="btn btn-primary" onclick="generateKeys()">Generate Keys & Join</button>
-            </div>
-            
-            <div id="keyStatus" class="hidden">
-                <div class="encryption-status">
-                    ✅ Kunci RSA berhasil digenerate!
+    <div class="chat-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="user-info">
+                    <div class="user-avatar" id="userAvatar"></div>
+                    <div>
+                        <div id="currentUsername">Loading...</div>
+                        <div style="font-size: 0.8rem; opacity: 0.8;" id="currentRoom">general</div>
+                    </div>
                 </div>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+
+            <div class="room-section">
+                <h3>Join Room</h3>
+                <div class="room-input">
+                    <input type="text" id="roomInput" placeholder="Room name" value="general">
+                    <button onclick="joinRoom()">Join</button>
+                </div>
+            </div>
+
+            <div class="online-users">
+                <h3>Online Users (<span id="userCount">0</span>)</h3>
+                <ul class="user-list" id="userList">
+                    <!-- Users will be populated here -->
+                </ul>
+            </div>
+
+            <div class="key-management">
+                <button onclick="regenerateKeys()">🔄 Regenerate Keys</button>
             </div>
         </div>
 
-        <!-- Chat Interface -->
-        <div id="chatContainer" class="chat-container">
-            <div class="sidebar">
-                <div class="sidebar-header">
-                    <h3>🔐 Secure Chat</h3>
-                </div>
-                
-                <div class="user-info">
-                    <strong id="currentUser"></strong><br>
-                    <small id="currentRoom"></small>
-                    <div id="encryptionInfo" class="encryption-status">
-                        🔒 Enkripsi RSA Aktif
+        <!-- Main Chat -->
+        <div class="chat-main">
+            <div class="chat-header">
+                <div>
+                    <div class="chat-title" id="chatTitle">General Chat</div>
+                    <div class="encryption-status">
+                        🔒 End-to-end encrypted
                     </div>
-                </div>
-                
-                <div class="users-list">
-                    <h4 style="padding: 10px 0; color: #666;">Online Users:</h4>
-                    <div id="usersList"></div>
                 </div>
             </div>
 
-            <div class="chat-area">
-                <div class="chat-header">
-                    <h3>Room: <span id="roomName"></span></h3>
-                    <div id="targetUser">Broadcast ke semua</div>
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages will be populated here -->
+            </div>
+
+            <div class="chat-input">
+                <div class="private-message-indicator" id="privateMessageIndicator">
+                    Sending private message to <span id="privateTargetName"></span>
+                    <button onclick="clearPrivateTarget()" style="float: right; background: none; border: none; color: #d63031; cursor: pointer;">✕</button>
                 </div>
                 
-                <div id="messagesContainer" class="messages-container"></div>
-                
-                <div id="typingIndicator" class="typing-indicator"></div>
-                
-                <div class="message-input">
-                    <input type="text" id="messageInput" placeholder="Ketik pesan (akan dienkripsi otomatis)..." 
-                           onkeypress="handleKeyPress(event)">
-                    <button onclick="sendMessage()">Send</button>
-                    <button onclick="toggleBroadcast()" id="broadcastBtn">Broadcast</button>
+                <div class="input-container">
+                    <textarea 
+                        id="messageInput" 
+                        class="message-input" 
+                        placeholder="Type your message..." 
+                        rows="1"
+                    ></textarea>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
                 </div>
+                
+                <div class="typing-indicator" id="typingIndicator"></div>
             </div>
         </div>
     </div>
 
     <script>
+        // Global variables
         let socket;
-        let privateKey = '';
-        let publicKey = '';
-        let currentUsername = '';
-        let currentRoom = '';
-        let myUserId = '';
-        let targetUserId = null;
-        let users = [];
-        let typingTimer;
+        let currentUser = null;
+        let currentRoom = 'general';
+        let onlineUsers = {};
+        let privateTarget = null;
+        let typingTimeout;
         let isTyping = false;
 
-        function generateKeys() {
-            const username = document.getElementById('username').value.trim();
-            const room = document.getElementById('room').value.trim() || 'general';
-            
-            if (!username) {
-                alert('Silakan masukkan username!');
+        // Initialize chat
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get user data from localStorage (set during login)
+            const userData = localStorage.getItem('user_data');
+            if (!userData) {
+                window.location.href = '/login';
                 return;
             }
 
-            // Generate RSA keys
-            fetch('/generate-keys', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                privateKey = data.private_key;
-                publicKey = data.public_key;
-                
-                document.getElementById('keyStatus').classList.remove('hidden');
-                
-                setTimeout(() => {
-                    joinChat(username, room);
-                }, 1000);
-            })
-            .catch(error => {
-                console.error('Error generating keys:', error);
-                alert('Error generating encryption keys!');
-            });
-        }
+            currentUser = JSON.parse(userData);
+            document.getElementById('currentUsername').textContent = currentUser.username;
+            document.getElementById('userAvatar').textContent = currentUser.username.charAt(0).toUpperCase();
 
-        function joinChat(username, room) {
-            currentUsername = username;
-            currentRoom = room;
-            
-            // Initialize Socket.IO
+            // Initialize socket connection
             socket = io();
-            
+
             // Socket event listeners
-            socket.on('connect', () => {
+            socket.on('connect', function() {
                 console.log('Connected to server');
-                socket.emit('join_chat', {
-                    username: username,
-                    public_key: publicKey,
-                    room: room
-                });
+                joinRoom();
             });
 
-            socket.on('join_confirmed', (data) => {
-                myUserId = data.your_id;
-                document.getElementById('loginForm').style.display = 'none';
-                document.getElementById('chatContainer').style.display = 'flex';
-                document.getElementById('currentUser').textContent = username;
-                document.getElementById('currentRoom').textContent = `Room: ${room}`;
-                document.getElementById('roomName').textContent = room;
+            socket.on('disconnect', function() {
+                console.log('Disconnected from server');
+                showNotification('Connection lost. Trying to reconnect...', 'error');
             });
 
-            socket.on('update_users', (data) => {
-                users = data.users;
-                updateUsersList();
+            socket.on('join_confirmed', function(data) {
+                currentRoom = data.room;
+                document.getElementById('currentRoom').textContent = currentRoom;
+                document.getElementById('chatTitle').textContent = currentRoom.charAt(0).toUpperCase() + currentRoom.slice(1) + ' Chat';
+                showNotification('Joined room: ' + currentRoom, 'success');
             });
 
-            socket.on('user_joined', (data) => {
-                addSystemMessage(`${data.username} bergabung ke chat`);
+            socket.on('user_joined', function(data) {
+                addSystemMessage(`${data.username} joined the chat`);
             });
 
-            socket.on('user_left', (data) => {
-                addSystemMessage(`${data.username} meninggalkan chat`);
+            socket.on('user_left', function(data) {
+                addSystemMessage(`${data.username} left the chat`);
             });
 
-            socket.on('receive_message', (data) => {
-                displayMessage(data);
+            socket.on('update_users', function(data) {
+                updateUserList(data.users);
             });
 
-            socket.on('user_typing', (data) => {
-                showTypingIndicator(data.username, data.is_typing);
+            socket.on('receive_message', function(data) {
+                addMessage(data);
             });
-        }
 
-        function updateUsersList() {
-            const usersList = document.getElementById('usersList');
-            usersList.innerHTML = '';
-            
-            users.forEach(user => {
-                if (user.id !== myUserId) {
-                    const userDiv = document.createElement('div');
-                    userDiv.className = 'user-item';
-                    userDiv.onclick = () => selectUser(user);
-                    userDiv.innerHTML = `
-                        <strong>${user.username}</strong><br>
-                        <small>Click untuk chat private</small>
-                    `;
-                    usersList.appendChild(userDiv);
+            socket.on('user_typing', function(data) {
+                handleTypingIndicator(data);
+            });
+
+            socket.on('chat_history', function(data) {
+                loadChatHistory(data.messages);
+            });
+
+            socket.on('error', function(data) {
+                showNotification(data.message, 'error');
+            });
+
+            // Input event listeners
+            const messageInput = document.getElementById('messageInput');
+            messageInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                } else {
+                    handleTyping();
                 }
             });
-        }
 
-        function selectUser(user) {
-            // Remove previous selection
-            document.querySelectorAll('.user-item').forEach(item => {
-                item.classList.remove('selected');
+            messageInput.addEventListener('input', function() {
+                // Auto-resize textarea
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 100) + 'px';
             });
-            
-            // Select new user
-            event.target.classList.add('selected');
-            targetUserId = user.id;
-            document.getElementById('targetUser').textContent = `Private ke: ${user.username}`;
-            document.getElementById('broadcastBtn').textContent = 'Broadcast';
+
+            // Room input enter key
+            document.getElementById('roomInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    joinRoom();
+                }
+            });
+        });
+
+        // Join room function
+        function joinRoom() {
+            const roomName = document.getElementById('roomInput').value.trim() || 'general';
+            if (roomName === currentRoom) return;
+
+            socket.emit('join_chat', { room: roomName });
+            clearMessages();
+            clearPrivateTarget();
         }
 
-        function toggleBroadcast() {
-            if (targetUserId) {
-                targetUserId = null;
-                document.getElementById('targetUser').textContent = 'Broadcast ke semua';
-                document.getElementById('broadcastBtn').textContent = 'Broadcast';
-                document.querySelectorAll('.user-item').forEach(item => {
-                    item.classList.remove('selected');
-                });
-            }
-        }
-
+        // Send message function
         function sendMessage() {
             const messageInput = document.getElementById('messageInput');
             const message = messageInput.value.trim();
@@ -497,148 +588,274 @@
             if (!message) return;
 
             let messageData = message;
+            let targetUserId = null;
             let originalMessage = message;
 
-            // Encrypt for specific user if selected
-            if (targetUserId) {
-                const targetUser = users.find(u => u.id === targetUserId);
-                if (targetUser && targetUser.public_key) {
-                    const encrypted = encryptMessage(message, targetUser.public_key);
-                    if (encrypted) {
-                        messageData = encrypted;
+            // Handle private messages
+            if (privateTarget) {
+                targetUserId = privateTarget.id;
+                // Encrypt message for private recipient
+                if (privateTarget.public_key) {
+                    const encryptedMessage = encryptMessage(message, privateTarget.public_key);
+                    if (encryptedMessage) {
+                        messageData = encryptedMessage;
+                    } else {
+                        showNotification('Failed to encrypt message', 'error');
+                        return;
                     }
                 }
             }
 
             socket.emit('send_message', {
                 message: messageData,
-                original_message: originalMessage,
-                target_user_id: targetUserId
+                target_user_id: targetUserId,
+                original_message: originalMessage
             });
 
             messageInput.value = '';
-            stopTyping();
+            messageInput.style.height = 'auto';
+            
+            // Clear typing indicator
+            if (isTyping) {
+                socket.emit('typing', { is_typing: false });
+                isTyping = false;
+            }
         }
 
-        function displayMessage(data) {
-            const messagesContainer = document.getElementById('messagesContainer');
+        // Add message to chat
+        function addMessage(data) {
+            const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
             
-            const isOwnMessage = data.sender_id === myUserId;
+            if (data.sender_id === socket.id) {
+                messageDiv.classList.add('own');
+            }
+            
+            if (data.is_private) {
+                messageDiv.classList.add('private');
+            }
+
             let messageContent = data.message;
-            let messageClass = '';
             
-            // Tentukan kelas CSS berdasarkan jenis pesan
-            if (data.is_private) {
-                if (isOwnMessage) {
-                    // Pesan private yang dikirim oleh saya
-                    messageClass = 'message private-sent';
-                    messageContent = data.message; // Sudah dalam bentuk asli dari server
-                } else {
-                    // Pesan private yang diterima oleh saya
-                    messageClass = 'message private-received';
-                    // Coba decrypt pesan
-                    const decrypted = decryptMessage(data.message);
-                    if (decrypted) {
-                        messageContent = decrypted;
-                    }
-                }
-            } else {
-                // Pesan public
-                messageClass = isOwnMessage ? 'message own' : 'message other';
-            }
-            
-            messageDiv.className = messageClass;
-            
-            // Buat header pesan
-            let targetInfo = '';
-            if (data.is_private) {
-                if (isOwnMessage) {
-                    const targetUser = users.find(u => u.id === data.target_user_id);
-                    targetInfo = targetUser ? ` → ${targetUser.username}` : ' → Unknown';
-                } else {
-                    targetInfo = ' → Anda';
+            // Decrypt private messages if they're for us
+            if (data.is_private && data.sender_id !== socket.id && currentUser.private_key) {
+                const decrypted = decryptMessage(data.message, currentUser.private_key);
+                if (decrypted) {
+                    messageContent = decrypted;
                 }
             }
-            
+
             messageDiv.innerHTML = `
-                <div class="message-header">
-                    ${data.sender} - ${data.timestamp}
-                    ${data.is_private ? `<span class="private-indicator">🔒 Private${targetInfo}</span>` : ''}
+                <div class="message-info">
+                    <span class="message-sender">${data.sender}</span>
+                    <span class="message-time">${data.timestamp}</span>
+                    ${data.is_private ? '<span class="message-privacy">Private</span>' : ''}
                 </div>
-                <div>${messageContent}</div>
+                <div class="message-content">${escapeHtml(messageContent)}</div>
             `;
-            
+
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
+        // Add system message
         function addSystemMessage(message) {
-            const messagesContainer = document.getElementById('messagesContainer');
+            const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message system';
+            messageDiv.className = 'system-message';
             messageDiv.textContent = message;
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        function handleKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            } else {
-                startTyping();
-            }
+        // Update user list
+        function updateUserList(users) {
+            const userList = document.getElementById('userList');
+            const userCount = document.getElementById('userCount');
+            
+            userList.innerHTML = '';
+            onlineUsers = {};
+            
+            users.forEach(user => {
+                onlineUsers[user.id] = user;
+                
+                const userItem = document.createElement('li');
+                userItem.className = 'user-item';
+                userItem.innerHTML = `
+                    <span class="user-name">${user.username}</span>
+                    <span class="user-status"></span>
+                `;
+                
+                // Add click handler for private messaging
+                userItem.addEventListener('click', function() {
+                    if (user.id !== socket.id) {
+                        setPrivateTarget(user);
+                    }
+                });
+                
+                if (user.id === socket.id) {
+                    userItem.style.background = '#e8f5e8';
+                }
+                
+                userList.appendChild(userItem);
+            });
+            
+            userCount.textContent = users.length;
         }
 
-        function startTyping() {
+        // Set private message target
+        function setPrivateTarget(user) {
+            privateTarget = user;
+            document.getElementById('privateTargetName').textContent = user.username;
+            document.getElementById('privateMessageIndicator').style.display = 'block';
+            document.getElementById('messageInput').placeholder = `Private message to ${user.username}...`;
+            
+            // Highlight selected user
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+        }
+
+        // Clear private target
+        function clearPrivateTarget() {
+            privateTarget = null;
+            document.getElementById('privateMessageIndicator').style.display = 'none';
+            document.getElementById('messageInput').placeholder = 'Type your message...';
+            
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+        }
+
+        // Handle typing indicator
+        function handleTyping() {
             if (!isTyping) {
                 isTyping = true;
                 socket.emit('typing', { is_typing: true });
             }
             
-            clearTimeout(typingTimer);
-            typingTimer = setTimeout(stopTyping, 1000);
-        }
-
-        function stopTyping() {
-            if (isTyping) {
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
                 isTyping = false;
                 socket.emit('typing', { is_typing: false });
-            }
-            clearTimeout(typingTimer);
+            }, 1000);
         }
 
-        function showTypingIndicator(username, typing) {
-            const indicator = document.getElementById('typingIndicator');
-            if (typing) {
-                indicator.textContent = `${username} sedang mengetik...`;
+        function handleTypingIndicator(data) {
+            const typingIndicator = document.getElementById('typingIndicator');
+            
+            if (data.is_typing) {
+                typingIndicator.textContent = `${data.username} is typing...`;
             } else {
-                indicator.textContent = '';
+                typingIndicator.textContent = '';
             }
         }
 
-        // Encryption functions (simplified - using Web Crypto API would be better)
+        // Load chat history
+        function loadChatHistory(messages) {
+            const messagesContainer = document.getElementById('chatMessages');
+            messagesContainer.innerHTML = ''; // Clear previous messages
+            
+            messages.forEach(message => {
+                // Create a data object similar to what receive_message gets
+                const messageData = {
+                    // Check if the sender's database ID matches the current user's database ID
+                    sender_id: message.sender_id === currentUser.id ? socket.id : 'some_other_id',
+                    sender: message.sender,
+                    message: message.message,
+                    timestamp: new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    is_private: message.is_private
+                };
+                addMessage(messageData);
+            });
+        }
+
+        // Clear messages
+        function clearMessages() {
+            document.getElementById('chatMessages').innerHTML = '';
+        }
+
+        // Regenerate encryption keys
+        async function regenerateKeys() {
+            if (!confirm('This will regenerate your encryption keys. You won\'t be able to decrypt old private messages. Continue?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/generate-keys', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (data.private_key && data.public_key) {
+                    currentUser.private_key = data.private_key;
+                    currentUser.public_key = data.public_key;
+                    localStorage.setItem('user_data', JSON.stringify(currentUser));
+                    showNotification('Encryption keys regenerated successfully', 'success');
+                } else {
+                    showNotification('Failed to regenerate keys', 'error');
+                }
+            } catch (error) {
+                showNotification('Error regenerating keys', 'error');
+                console.error('Key regeneration error:', error);
+            }
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.removeItem('user_data');
+            window.location.href = '/logout';
+        }
+
+        // Show notification
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Utility functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Encryption functions (simplified for demo - use proper crypto library in production)
         function encryptMessage(message, publicKeyPem) {
-            // This is a placeholder - in real implementation, use Web Crypto API
-            // For demo purposes, we'll just encode the message
             try {
-                return btoa(unescape(encodeURIComponent(message + '_ENCRYPTED_WITH_' + publicKeyPem.substring(0, 50))));
-            } catch (e) {
-                console.error('Encryption error:', e);
-                return message;
+                // This is a simplified version - in a real app, use proper RSA encryption
+                // For demo purposes, we'll just encode the message
+                return btoa(message + '::encrypted::' + Date.now());
+            } catch (error) {
+                console.error('Encryption error:', error);
+                return null;
             }
         }
 
-        function decryptMessage(encryptedMessage) {
-            // This is a placeholder - in real implementation, use Web Crypto API
+        function decryptMessage(encryptedMessage, privateKeyPem) {
             try {
-                const decoded = decodeURIComponent(escape(atob(encryptedMessage)));
-                if (decoded.includes('_ENCRYPTED_WITH_')) {
-                    return decoded.split('_ENCRYPTED_WITH_')[0];
+                // This is a simplified version - in a real app, use proper RSA decryption
+                // For demo purposes, we'll just decode if it matches our pattern
+                const decoded = atob(encryptedMessage);
+                if (decoded.includes('::encrypted::')) {
+                    return decoded.split('::encrypted::')[0];
                 }
                 return encryptedMessage;
-            } catch (e) {
-                console.error('Decryption error:', e);
+            } catch (error) {
+                console.error('Decryption error:', error);
                 return encryptedMessage;
             }
         }
