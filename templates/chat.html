@@ -485,17 +485,17 @@
         let isTyping = false;
 
         // Initialize chat
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             // Get user data from localStorage (set during login)
             const userData = localStorage.getItem('user_data');
             if (!userData) {
                 window.location.href = '/login';
                 return;
             }
-
             currentUser = JSON.parse(userData);
             document.getElementById('currentUsername').textContent = currentUser.username;
             document.getElementById('userAvatar').textContent = currentUser.username.charAt(0).toUpperCase();
+            await afterLoginSetup();
 
             // Initialize socket connection
             socket = io();
@@ -584,39 +584,48 @@
         }
 
         // Send message function
-        function sendMessage() {
+        async function sendMessage() {
             const messageInput = document.getElementById('messageInput');
             const message = messageInput.value.trim();
             
             if (!message) return;
 
-            let targetUserId = null;
+            try {
+                let encryptedMessage;
+                let targetUserId = null;
 
-            // Handle private messages
-            if (privateTarget) {
-                targetUserId = privateTarget.id;
-            }
+                if (privateTarget) {
+                    // Private message - encrypt with target's public key
+                    targetUserId = privateTarget.id;
+                    const targetPublicKey = await importPublicKey(privateTarget.public_key);
+                    encryptedMessage = await encryptMessage(message, targetPublicKey);
+                } else {
+                    // Public message - send as plain text (no encryption)
+                    encryptedMessage = message;
+                }
 
-            // TIDAK ADA LAGI ENKRIPSI DI SISI CLIENT
-            // Client hanya mengirim pesan asli (plaintext)
-            socket.emit('send_message', {
-                message: message, // Ini tidak lagi digunakan di backend untuk enkripsi
-                target_user_id: targetUserId,
-                original_message: message // Backend akan menggunakan ini sebagai sumber pesan
-            });
+                socket.emit('send_message', {
+                    encrypted_message: encryptedMessage,
+                    original_message: message, // Include original message for sender's view
+                    target_user_id: targetUserId
+                });
 
-            messageInput.value = '';
-            messageInput.style.height = 'auto';
-            
-            // Clear typing indicator
-            if (isTyping) {
-                socket.emit('typing', { is_typing: false });
-                isTyping = false;
+                messageInput.value = '';
+                messageInput.style.height = 'auto';
+                
+                // Clear typing indicator
+                if (isTyping) {
+                    socket.emit('typing', { is_typing: false });
+                    isTyping = false;
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showNotification('Failed to send message', 'error');
             }
         }
-
         // Add message to chat
-        function addMessage(data) {
+        // Add message to chat
+        async function addMessage(data) {
             const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
@@ -631,13 +640,25 @@
 
             let messageContent = data.message;
             
-            // Decrypt private messages if they're for us
-            if (data.is_private && data.sender_id !== socket.id && currentUser.private_key) {
-                const decrypted = decryptMessage(data.message, currentUser.private_key);
-                if (decrypted) {
-                    messageContent = decrypted;
+            // Handle message decryption/display
+            if (data.is_private) {
+                if (data.is_own_message) {
+                    // This is sender's own private message - already decrypted
+                    messageContent = data.message;
+                } else if (window.privateKeyObj) {
+                    // This is a received private message - try to decrypt
+                    try {
+                        messageContent = await decryptMessage(data.message, window.privateKeyObj);
+                        console.log('Decrypted private message:', messageContent);
+                    } catch (e) {
+                        console.error('Decryption error:', e);
+                        messageContent = '[Cannot decrypt this message]';
+                    }
+                } else {
+                    messageContent = '[Cannot decrypt this message]';
                 }
             }
+            // Public messages are already plain text, so use as-is
 
             messageDiv.innerHTML = `
                 <div class="message-info">
@@ -651,7 +672,6 @@
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-
         // Add system message
         function addSystemMessage(message) {
             const messagesContainer = document.getElementById('chatMessages');
@@ -826,42 +846,106 @@
             return div.innerHTML;
         }
 
-        // Encryption functions (simplified for demo - use proper crypto library in production)
-        function encryptMessage(message, publicKeyPem) {
+        // --- Key Management ---
+        async function generateKeyPair() {
+            const keyPair = await window.crypto.subtle.generateKey({
+                name: 'RSA-OAEP',
+                modulusLength: 2048,
+                publicExponent: new Uint8Array([1, 0, 1]),
+                hash: 'SHA-256',
+            }, true, ['encrypt', 'decrypt']);
+            return keyPair;
+        }
+
+        async function exportPublicKey(key) {
+            const spki = await window.crypto.subtle.exportKey('spki', key);
+            return btoa(String.fromCharCode(...new Uint8Array(spki)));
+        }
+
+        async function exportPrivateKey(key) {
+            const pkcs8 = await window.crypto.subtle.exportKey('pkcs8', key);
+            return btoa(String.fromCharCode(...new Uint8Array(pkcs8)));
+        }
+
+        // Helper to convert PEM to base64
+        function pemToBase64(pem) {
+            return pem.replace(/-----.*?-----/g, '').replace(/\s+/g, '');
+        }
+
+        async function importPublicKey(pem) {
+            const base64 = pemToBase64(pem);
+            const binaryDer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+            return window.crypto.subtle.importKey(
+                'spki',
+                binaryDer,
+                { name: 'RSA-OAEP', hash: 'SHA-256' },
+                true,
+                ['encrypt']
+            );
+        }
+
+        async function importPrivateKey(pem) {
+            const base64 = pemToBase64(pem);
+            const binaryDer = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+            return window.crypto.subtle.importKey(
+                'pkcs8',
+                binaryDer,
+                { name: 'RSA-OAEP', hash: 'SHA-256' },
+                true,
+                ['decrypt']
+            );
+        }
+
+        // --- Encrypt/Decrypt ---
+        async function encryptMessage(message, publicKey) {
+            const enc = new TextEncoder();
+            const encrypted = await window.crypto.subtle.encrypt(
+                { name: 'RSA-OAEP' },
+                publicKey,
+                enc.encode(message)
+            );
+            return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+        }
+
+        async function decryptMessage(encryptedMessage, privateKey) {
             try {
-                // This is a simplified version - in a real app, use proper RSA encryption
-                // For demo purposes, we'll just encode the message
-                return btoa(message + '::encrypted::' + Date.now());
-            } catch (error) {
-                console.error('Encryption error:', error);
-                return null;
+                const encryptedBytes = Uint8Array.from(atob(encryptedMessage), c => c.charCodeAt(0));
+                const decrypted = await window.crypto.subtle.decrypt(
+                    { name: 'RSA-OAEP' },
+                    privateKey,
+                    encryptedBytes
+                );
+                const decoded = new TextDecoder().decode(decrypted);
+                console.log('decryptMessage success:', decoded);
+                return decoded;
+            } catch (e) {
+                console.error('decryptMessage error:', e);
+                return '[Encrypted message]';
             }
         }
 
-        function decryptMessage(encryptedMessage, privateKeyPem) {
+        // --- Registration/Login Key Handling ---
+        // On registration: generate key pair, send public key to server, store private key in localStorage
+        // On login: load private key from localStorage (or prompt to import)
+        // (You will need to update your registration/login forms to handle this logic)
+
+        // After successful login, load the private key for decryption
+        async function afterLoginSetup() {
             try {
-                // 1. Buat instance JSEncrypt
-                const decrypt = new JSEncrypt();
-
-                // 2. Set kunci privat yang didapat saat login
-                decrypt.setPrivateKey(privateKeyPem);
-
-                // 3. Lakukan dekripsi
-                // Pesan dari Python di-encode dengan Base64, jadi kita perlu men-decode nya terlebih dahulu
-                // JSEncrypt secara otomatis menangani Base64, jadi kita bisa langsung memasukkannya.
-                const decrypted = decrypt.decrypt(encryptedMessage);
-
-                if (decrypted) {
-                    return decrypted;
+                if (currentUser && currentUser.private_key) {
+                    window.privateKeyObj = await importPrivateKey(currentUser.private_key);
+                    console.log('Private key loaded:', window.privateKeyObj);
                 } else {
-                    // Gagal dekripsi (misalnya, kunci salah atau data rusak)
-                    return "[Pesan pribadi tidak dapat didekripsi]";
+                    console.error('No private key found for current user!');
                 }
-            } catch (error) {
-                console.error('Decryption error:', error);
-                return "[Error saat mendekripsi pesan]";
+            } catch (e) {
+                console.error('Failed to import private key:', e);
             }
         }
+
+        // Call afterLoginSetup after login is complete and currentUser is set
+        // Example: after setting currentUser from localStorage or login response
+        // await afterLoginSetup();
     </script>
 </body>
 </html>

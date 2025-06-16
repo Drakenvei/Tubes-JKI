@@ -111,15 +111,26 @@ def generate_key_pair():
 def encrypt_message(message, public_key_pem):
     """Encrypt message using RSA public key"""
     try:
-        public_key = serialization.load_pem_public_key(public_key_pem.encode('utf-8'))
+        # Load the public key
+        public_key = serialization.load_pem_public_key(
+            public_key_pem.encode('utf-8')
+        )
+        
+        # Convert message to bytes if it's a string
+        if isinstance(message, str):
+            message = message.encode('utf-8')
+        
+        # Encrypt the message
         encrypted = public_key.encrypt(
-            message.encode('utf-8'),
+            message,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
                 label=None
             )
         )
+        
+        # Convert to base64 for transmission
         return base64.b64encode(encrypted).decode('utf-8')
     except Exception as e:
         print(f"Encryption error: {e}")
@@ -146,16 +157,14 @@ def decrypt_message(encrypted_message, private_key_pem):
         print(f"Decryption error: {e}")
         return None
 
-def save_message_to_db(sender_id, room, message, is_private=False, target_user_id=None):
-    """Save message to database"""
+def save_message_to_db(sender_id, room, encrypted_message, is_private=False, target_user_id=None):
+    """Save encrypted message to database"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    
     cursor.execute('''
         INSERT INTO messages (sender_id, room, message, is_private, target_user_id)
         VALUES (?, ?, ?, ?, ?)
-    ''', (sender_id, room, message, is_private, target_user_id))
-    
+    ''', (sender_id, room, encrypted_message, is_private, target_user_id))
     conn.commit()
     conn.close()
 
@@ -163,8 +172,6 @@ def get_chat_history(room, user_id, limit=50):
     """Get chat history for a room"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    
-    # Get public messages and private messages for this user
     cursor.execute('''
         SELECT m.*, u.username as sender_username, tu.username as target_username
         FROM messages m
@@ -178,24 +185,20 @@ def get_chat_history(room, user_id, limit=50):
         ORDER BY m.timestamp DESC
         LIMIT ?
     ''', (room, user_id, user_id, limit))
-    
     messages = cursor.fetchall()
     conn.close()
-    
-    # Convert to list of dicts and reverse to get chronological order
     result = []
     for msg in reversed(messages):
         result.append({
             'id': msg['id'],
             'sender_id': msg['sender_id'],
             'sender': msg['sender_username'],
-            'message': msg['message'],
+            'message': msg['message'], # still encrypted
             'is_private': bool(msg['is_private']),
             'target_user_id': msg['target_user_id'],
             'target_username': msg['target_username'],
             'timestamp': msg['timestamp']
         })
-    
     return result
 
 @app.route('/')
@@ -468,75 +471,47 @@ def on_send_message(data):
     user_id = user_data['user_id']
     username = user_data['username']
     room = user_data['room']
-    original_message = data.get('original_message') # Kita akan selalu menggunakan original_message dari client
-    target_session_id = data.get('target_user_id') # Ini adalah session_id dari target
-
+    encrypted_message = data.get('encrypted_message')
+    target_session_id = data.get('target_user_id')
     timestamp = datetime.now().strftime('%H:%M:%S')
-
-    # Jika ini adalah pesan pribadi (private message)
+    
+    # Save encrypted message to DB
+    save_message_to_db(user_id, room, encrypted_message, is_private=bool(target_session_id), target_user_id=target_session_id)
+    
+    # Forward message
     if target_session_id:
-        # 1. Pastikan target online
-        if target_session_id not in online_users:
-            emit('error', {'message': 'User is offline or does not exist.'}, room=session_id)
-            return
-            
-        target_info = online_users[target_session_id]
-        target_db_id = target_info['user_id']
-        
-        # Simpan pesan plaintext ke database
-        save_message_to_db(user_id, room, original_message, is_private=True, target_user_id=target_db_id)
-
-        # 2. Ambil kunci publik target dari database
-        conn = get_db_connection()
-        target_user_db = conn.execute('SELECT public_key FROM users WHERE id = ?', (target_db_id,)).fetchone()
-        conn.close()
-
-        if not target_user_db or not target_user_db['public_key']:
-            emit('error', {'message': 'Target user does not have a public key.'}, room=session_id)
-            return
-
-        # 3. Enkripsi pesan menggunakan kunci publik target
-        encrypted_message = encrypt_message(original_message, target_user_db['public_key'])
-        
-        if not encrypted_message:
-            emit('error', {'message': 'Failed to encrypt message.'}, room=session_id)
-            return
-
-        # 4. Kirim pesan plaintext kembali ke PENGIRIM
+        # Private message - send to target
         emit('receive_message', {
             'sender_id': session_id,
             'sender': username,
-            'message': original_message, # Kirim plaintext ke diri sendiri
+            'message': encrypted_message,
             'timestamp': timestamp,
             'target_user_id': target_session_id,
-            'is_private': True,
-            'is_sender': True
-        }, room=session_id)
-        
-        # 5. Kirim pesan terenkripsi ke PENERIMA
-        emit('receive_message', {
-            'sender_id': session_id,
-            'sender': username,
-            'message': encrypted_message, # Kirim hasil enkripsi ke target
-            'timestamp': timestamp,
-            'target_user_id': target_session_id,
-            'is_private': True,
-            'is_sender': False
+            'is_private': True
         }, room=target_session_id)
-
-    else:
-        # Pesan publik (tidak ada enkripsi)
-        save_message_to_db(user_id, room, original_message, is_private=False, target_user_id=None)
         
+        # Send back to sender with original message for their own view
+        original_message = data.get('original_message', '')
         emit('receive_message', {
             'sender_id': session_id,
             'sender': username,
-            'message': original_message,
+            'message': original_message,  # Send original unencrypted message
+            'timestamp': timestamp,
+            'target_user_id': target_session_id,
+            'is_private': True,
+            'is_own_message': True  # Flag to indicate this is sender's own message
+        }, room=session_id)
+    else:
+        # Public message
+        emit('receive_message', {
+            'sender_id': session_id,
+            'sender': username,
+            'message': encrypted_message,
             'timestamp': timestamp,
             'target_user_id': None,
             'is_private': False
         }, room=room)
-        
+
 @socketio.on('typing')
 def on_typing(data):
     session_id = request.sid
